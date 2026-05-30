@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width: 700px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 16px; margin-bottom: 20px;">
+        <h3 style="margin: 0; font-size: 1.1rem; color: var(--text-secondary);">
+            Position: <span style="color: var(--accent-indigo); font-weight: 700;">{{ role }}</span>
+        </h3>
+        <a href="/" style="color: var(--text-muted); text-decoration: none; font-size: 0.85rem; font-weight: 500; transition: color 0.2s;" onmouseover="this.style.color='#f8fafc'" onmouseout="this.style.color='var(--text-muted)'">✕ End Session</a>
+    </div>
+
+    <div id="chat" style="height: 380px; overflow-y: auto; padding-right: 8px; margin-bottom: 24px; display: flex; flex-direction: column;">
+        <div class="bot">
+            <strong>🤖 Interviewer:</strong><br>
+            <span style="display: inline-block; margin-top: 4px;">{{ first_question }}</span>
+        </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+        <textarea id="answer" placeholder="Type your professional response here..." rows="3" style="resize: none;"></textarea>
+        <button id="send-btn" onclick="send()">Submit Answer 🌟</button>
+    </div>
+</div>
+
+<script>
+function send() {
+    let answerInput = document.getElementById("answer");
+    let sendBtn = document.getElementById("send-btn");
+    let chatBox = document.getElementById("chat");
+    let answer = answerInput.value.trim();
+
+    if (!answer) return;
+
+    // Lock inputs to prevent multi-submit bugs while AI thinks
+    answerInput.disabled = true;
+    sendBtn.disabled = true;
+    sendBtn.innerText = "Interviewer is evaluating... ⏳";
+
+    // 1. Append User Bubble to layout
+    let userDiv = document.createElement("div");
+    userDiv.className = "user";
+    userDiv.innerHTML = `<strong>🧑 You:</strong><br><span style="display: inline-block; margin-top: 4px;">${escapeHTML(answer)}</span>`;
+    chatBox.appendChild(userDiv);
+    
+    // Clear field immediately and scroll down
+    answerInput.value = "";
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    // 2. Stream transmission to Flask API
+    fetch("/ask", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({answer})
+    })
+    .then(res => res.json())
+    .then(data => {
+        // 3. Append AI Response Bubble
+        let botDiv = document.createElement("div");
+        botDiv.className = "bot";
+        botDiv.innerHTML = `<strong>🤖 Interviewer:</strong><br><span style="display: inline-block; margin-top: 4px;">${escapeHTML(data.reply)}</span>`;
+        chatBox.appendChild(botDiv);
+
+        // Unlock input controls
+        answerInput.disabled = false;
+        sendBtn.disabled = false;
+        sendBtn.innerText = "Submit Answer 🌟";
+        
+        // Push chat scroll view to latest message
+        chatBox.scrollTop = chatBox.scrollHeight;
+    })
+    .catch(err => {
+        console.error("Error:", err);
+        answerInput.disabled = false;
+        sendBtn.disabled = false;
+        sendBtn.innerText = "Submit Answer 🌟";
+    });
+}
+
+// Security function to prevent HTML injection errors
+function escapeHTML(str) {
+    return str.replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+    );
+}
+</script>
+{% endblock %}

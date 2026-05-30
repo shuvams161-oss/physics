@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Master Your Next Tech Interview</h1>
+    <p>Simulate realistic high-pressure interview sessions tailored entirely to your role. Receive instant AI grading, behavioral feedback, and contextual hints.</p>
+
+    <form action="/interview" method="get">
+        <label for="role-input">Target Industry Position</label>
+        <input 
+            type="text" 
+            id="role-input"
+            name="role" 
+            placeholder="e.g. Software Engineer, Frontend Dev, Data Analyst" 
+            required
+            autocomplete="off"
+        >
+        <button type="submit">Initialize Simulator ⚡</button>
+    </form>
+</div>
+{% endblock %}
