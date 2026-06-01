@@ -1,27 +1,49 @@
 function sendAnswer() {
-    let answerBox = document.getElementById("answer");
-    let answer = answerBox.value;
-
-    if (!answer) return;
-
+    let box = document.getElementById("answer");
     let chat = document.getElementById("chat");
 
-    // show user answer
+    let answer = box.value.trim();
+    if (!answer) return;
+
     chat.innerHTML += `<div class="user">🧑 You: ${answer}</div>`;
 
     fetch("/ask", {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ answer: answer })
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({answer})
     })
     .then(res => res.json())
     .then(data => {
+        chat.innerHTML += `
+            <div class="bot">
+                🤖 Score: ${data.score}/10<br>
+                ${data.feedback}<br><br>
+                <b>Next:</b> ${data.next_question}
+            </div>
+        `;
 
-        chat.innerHTML += `<div class="bot">🤖 Feedback: ${data.feedback}</div>`;
-        chat.innerHTML += `<div class="bot">🤖 Next: ${data.next_question}</div>`;
+        box.value = "";
+        chat.scrollTop = chat.scrollHeight;
+    });
+}
 
-        answerBox.value = "";
+
+function finishInterview() {
+    let chat = document.getElementById("chat");
+
+    fetch("/finish", {method: "POST"})
+    .then(res => res.json())
+    .then(data => {
+
+        chat.innerHTML += `
+            <div class="bot">
+                🏁 FINAL RESULT<br><br>
+                Score: ${data.final_score}/10<br>
+                Verdict: ${data.verdict}<br><br>
+                Strengths: ${data.strengths}<br>
+                Weaknesses: ${data.weaknesses}<br><br>
+                ${data.summary}
+            </div>
+        `;
     });
 }
