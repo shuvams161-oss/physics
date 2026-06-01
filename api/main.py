@@ -6,12 +6,11 @@ from dotenv import load_dotenv
 # Load variables from .env file securely
 load_dotenv()
 
-app = Flask(__name__)
-app.secret_key = "devkey123_secured"
+# FIXED: Explicitly tell Flask to look one directory level up for templates and static files
+app = Flask(__name__, template_folder='../templates', static_folder='../static')
+app.secret_key = os.getenv("SECRET_KEY")
 
 # SAFE WAY: Automatically reads the key from your .env file
-# Make sure your .env file has: GEMINI_API_KEY=your_actual_key
-# RIGHT WAY: Reads it securely out of your .env file
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # Using the blazing fast, free-tier compatible model
@@ -97,6 +96,6 @@ Rules:
     session.modified = True
 
     return jsonify({"reply": reply})
+
+# Expose the WSGI application object for Vercel / PythonAnywhere mapping
 app = app
-if __name__ == "__main__":
-    app.run(debug=True)
