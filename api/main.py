@@ -3,99 +3,162 @@ from flask import Flask, render_template, request, jsonify, session
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-# Load variables from .env file securely
+# Load environment variables
 load_dotenv()
 
-# FIXED: Explicitly tell Flask to look one directory level up for templates and static files
-app = Flask(__name__, template_folder='../templates', static_folder='../static')
-app.secret_key = os.getenv("SECRET_KEY")
+app = Flask(
+    __name__,
+    template_folder="../templates",
+    static_folder="../static"
+)
 
-# SAFE WAY: Automatically reads the key from your .env file
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# Secret key
+app.secret_key = os.getenv("SECRET_KEY", "fallback_dev_secret")
 
-# Using the blazing fast, free-tier compatible model
+# Gemini setup
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY not found in environment variables.")
+
+genai.configure(api_key=GEMINI_API_KEY)
+
+# Model
 model = genai.GenerativeModel("gemini-2.5-flash")
 
+
 def ask_gemini(prompt):
+    """
+    Sends prompt to Gemini and returns response text.
+    Handles quota errors gracefully.
+    """
     try:
         response = model.generate_content(prompt)
-        return response.text
+
+        if hasattr(response, "text") and response.text:
+            return response.text
+
+        return "⚠️ Gemini returned an empty response."
+
     except Exception as e:
-        return f"⚠️ API Error: Ensure your GEMINI_API_KEY is correct in your .env file. Details: {str(e)}"
+        error = str(e)
+
+        if "429" in error:
+            return (
+                "🚦 Rate limit reached. Please wait about a minute "
+                "before continuing the interview."
+            )
+
+        if "API_KEY" in error.upper():
+            return "🔑 Gemini API key appears invalid."
+
+        return f"⚠️ AI service temporarily unavailable."
+
 
 @app.route("/")
 def home():
     return render_template("index.html")
 
+
 @app.route("/interview")
 def interview():
-    # Capture the exact role typed by the user on the home page landing input
+
     role = request.args.get("role", "Software Engineer").strip()
+
     session["role"] = role
     session["history"] = []
 
-    # DYNAMIC PROMPT: Injecting the actual role variable directly into the system instructions!
     first_prompt = f"""
-You are an expert, professional job interviewer conducting a high-pressure interview for a {role} position.
+You are an expert professional interviewer conducting an interview for a {role} position.
 
-Task:
-Start the interview by introducing yourself briefly and asking exactly ONE relevant, technical, or situational opening interview question tailored specifically for a candidate applying as a {role}.
+Your task:
+- Introduce yourself briefly.
+- Ask exactly ONE opening interview question relevant to the {role} role.
 
 Rules:
-- Do not explain anything else.
-- Keep your total response concise and engaging.
+- Professional tone.
+- No explanations.
+- No multiple questions.
+- Keep it concise.
 """
 
     first_question = ask_gemini(first_prompt)
-    
-    # Store history matching the format
-    session["history"].append({"q": first_question, "a": ""})
-    session.modified = True
 
-    # Passing 'role' and 'first_question' so your premium template stays fully styled!
-    return render_template("interview.html", role=role, first_question=first_question)
+    history = [{"q": first_question, "a": ""}]
+    session["history"] = history
+
+    return render_template(
+        "interview.html",
+        role=role,
+        first_question=first_question
+    )
+
 
 @app.route("/ask", methods=["POST"])
 def ask():
-    data = request.json
+
+    data = request.get_json(silent=True)
+
+    if not data:
+        return jsonify({
+            "reply": "Invalid request."
+        }), 400
+
     user_answer = data.get("answer", "").strip()
+
+    if not user_answer:
+        return jsonify({
+            "reply": "Please provide an answer."
+        })
 
     role = session.get("role", "Software Engineer")
     history = session.get("history", [])
 
     if not history:
-        return jsonify({"reply": "Session expired. Please restart the interview from the home page."})
+        return jsonify({
+            "reply": "Session expired. Please restart the interview."
+        })
 
     last_question = history[-1]["q"]
 
-    # DYNAMIC PROGRESSION PROMPT: Evaluates the candidate's answer based on their specific target role
     prompt = f"""
-You are a professional job interviewer conducting an interview for a {role} position.
+You are a professional interviewer for a {role} position.
 
-Previous Interviewer Question:
-"{last_question}"
+Previous Interview Question:
+{last_question}
 
-Candidate's Response:
-"{user_answer}"
+Candidate Answer:
+{user_answer}
 
 Task:
-Perform exactly two tasks sequentially:
-1. Provide a sharp, realistic 1-2 sentence evaluation/feedback on their answer (highlight what was good or what critical details they missed for a {role} level standard).
-2. Smoothly transition and ask the NEXT logical, increasingly challenging interview question for a {role}.
+
+1. Give brief professional feedback on the candidate's answer.
+2. Ask the next logical interview question.
+3. Increase difficulty gradually.
 
 Rules:
-- Be strict, constructive, and realistic.
-- Do not break character. Keep your total response brief.
+- Be realistic.
+- Be constructive.
+- Keep the entire response under 120 words.
+- Stay in interviewer character.
 """
 
     reply = ask_gemini(prompt)
 
-    # Log this exchange to conversation history
-    history.append({"q": reply, "a": user_answer})
+    history.append({
+        "q": reply,
+        "a": user_answer
+    })
+
     session["history"] = history
-    session.modified = True
 
-    return jsonify({"reply": reply})
+    return jsonify({
+        "reply": reply
+    })
 
-# Expose the WSGI application object for Vercel / PythonAnywhere mapping
+
+# Vercel entrypoint
 app = app
+
+if __name__ == "__main__":
+    app.run(debug=True)
